@@ -2,6 +2,8 @@
 
 Backend service that monitors stock quotes using Finnhub and stores an in-memory history per symbol.
 
+---
+
 ## Setup
 
 1. Install dependencies:

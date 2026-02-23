@@ -1,15 +1,51 @@
-require("dotenv").config();
+/**
+ * Stock API Server
+ * - provides endpoints to fetch current stock quotes (via Finnhub)
+ * - allows users to start/stop periodic monitoring per symbol
+ * - stores a short rolling history in memory (server reset clears history)
+ */
 
+require("dotenv").config(); // load environment variables from .env
+
+const express = require("express"); // express framework for handling HTTP requests
+
+// ----------------------
+// configuration
+// ----------------------
+const PORT = 3000;
 const FINNHUB_API_KEY = process.env.FINNHUB_API_KEY;
 
-const express = require("express");
+// history size limit to avoid unbounded memory growth
+const MAX_HISTORY = 200; 
 
+// ----------------------
+// app + middleware
+// ----------------------
 const app = express();
-const PORT = 3000;
+app.use(express.json()); // parse JSON bodies for POST requests
 
+// ----------------------
+// in-memory state
+// ----------------------
+/**
+ * historyBySymbol: Map<symbol, QuoteRecord[]>
+ * ex: "AAPL" -> [{...record1}, {...record2}, ...]
+ */
 const historyBySymbol = new Map();
+/**
+ * jobBySymbol: Map<symbol, NodeJS.Timeout>
+ * stores the interval timer so we can stop it later
+ */
 const jobBySymbol = new Map(); 
 
+// ----------------------
+// helper functions
+// ----------------------
+
+/**
+ * fetch one stock quote from Finnhub
+ * returns a normalized object with fields frontend can use
+ */
 async function fetchStockQuote(symbol) {
     if (!FINNHUB_API_KEY) {
         throw new Error("Missing FINNHUB_API_KEY");
@@ -18,7 +54,6 @@ async function fetchStockQuote(symbol) {
     const url = `https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${FINNHUB_API_KEY}`;
 
     const response = await fetch(url);
-
     if (!response.ok) {
         throw new Error(`Finnhub API error: ${response.status}`);
     }
@@ -31,7 +66,6 @@ async function fetchStockQuote(symbol) {
     // l = low
     // o = open
     // pc = previous close
-
     return {
         symbol,
         open: data.o,
@@ -43,51 +77,110 @@ async function fetchStockQuote(symbol) {
     };
 }
 
-app.use(express.json());
+/**
+ * keep a symbol’s history array from growing forever
+ */
+function pushToHistory(symbolKey, record) {
+    if (!historyBySymbol.has(symbolKey)) {
+        historyBySymbol.set(symbolKey, []);
+    }
+    const history = historyBySymbol.get(symbolKey);
+    history.push(record);
 
+    if (history.length > MAX_HISTORY) {
+        history.shift();
+    }
+}
+
+/**
+ * normalize and validate a stock symbol from user input
+ */
+function normalizeSymbol(symbol) {
+    if (!symbol || typeof symbol !== "string" || symbol.trim().length === 0) {
+        return null;
+    }
+    return symbol.trim().toUpperCase();
+}
+
+// ----------------------
+// routes
+// ----------------------
+
+/**
+ * Health check / sanity endpoint
+ */
 app.get("/", (req, res) => {
     res.json({ message: "Stock API is running" });
 });
 
+/**
+ * quick one-off test fetch:
+ * GET /test-fetch?symbol=AAPL
+ */
 app.get("/test-fetch", async (req, res) => {
-    const { symbol }  = req.query;
-
-    if (!symbol || typeof symbol !== "string") {
+    const key = normalizeSymbol(req.query.symbol);
+    if (!key) {
         return res.status(400).json({ error: "Invalid symbol" });
     }
 
     try {
-        const result = await fetchStockQuote(symbol);
+        const result = await fetchStockQuote(key);
         res.json(result);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
 });
 
+/**
+ * get stored history for a symbol (in-memory)
+ * GET /history?symbol=AAPL
+ */
 app.get("/history", (req, res) => {
-    const { symbol } = req.query;
-
-    if (!symbol || typeof symbol !== "string" || symbol.trim().length === 0) {
+    const key = normalizeSymbol(req.query.symbol);
+    if (!key) {
         return res.status(400).json({ error: "Invalid symbol" });
     }
 
-    const key = symbol.trim().toUpperCase();
-    const history = historyBySymbol.get(key) || [];
-
-    res.json(history);
+    res.json(historyBySymbol.get(key) || []);
 });
 
-app.post("/start-monitoring", async (req, res) => {
-    const { symbol, minutes, seconds } = req.body;
 
-    // validate symbol
-    if (!symbol || typeof symbol !== "string" || symbol.trim().length === 0) {
+/**
+ * manually refresh (fetch once and append to history)
+ * POST /refresh { "symbol": "AAPL" }
+ */
+app.post("/refresh", async (req, res) => {
+    const key = normalizeSymbol(req.body.symbol);
+    if (!key) {
+        return res.status(400).json({ error: "symbol must be a non-empty string" });
+    }
+
+    try {
+        const record = await fetchStockQuote(key);
+        pushToHistory(key, record);
+        res.json(record);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+/**
+ * start monitoring a symbol on an interval
+ * POST /start-monitoring { "symbol": "AAPL", "minutes": 0, "seconds": 10 }
+ *
+ * - slears an existing job for the same symbol (restart behavior)
+ * - fetches immediately once so the client sees data right away
+ * - then fetches repeatedly on setInterval
+ */
+app.post("/start-monitoring", async (req, res) => {
+    const key = normalizeSymbol(req.body.symbol);
+    if (!key) {
         return res.status(400).json({ error: "symbol must be a non-empty string" });
     }
 
     // validate minutes/seconds are integers >= 0
-    const m = Number(minutes);
-    const s = Number(seconds);
+    const m = Number(req.body.minutes);
+    const s = Number(req.body.seconds);
 
     if (!Number.isInteger(m) || m < 0) {
         return res.status(400).json({ error: "minutes must be a non-negative integer" });
@@ -98,93 +191,54 @@ app.post("/start-monitoring", async (req, res) => {
     }
 
     const intervalMs = (m * 60 + s) * 1000;
-
     if (intervalMs <= 0) {
         return res.status(400).json({ error: "refresh interval must be greater than 0" });
     }
 
-    const key = symbol.trim().toUpperCase();
-
-    // if a job already exists for this symbol, clear it first
+    // if a monitoring job already exists, stop it before starting a new one
     const existingJob = jobBySymbol.get(key);
     if (existingJob) {
         clearInterval(existingJob);
         jobBySymbol.delete(key);
     }
 
-    // ensure history array exists
-    if (!historyBySymbol.has(key)) {
-        historyBySymbol.set(key, []);
-    }
-
-    // fetch once immediately (so user gets data right away)
     try {
+        // fetch immediately
         const firstRecord = await fetchStockQuote(key);
-        const history = historyBySymbol.get(key);
-        history.push(firstRecord);
-        if (history.length > 200) 
-            history.shift();
+        pushToHistory(key, firstRecord);
 
         // start interval job
         const job = setInterval(async () => {
             try {
                 const record = await fetchStockQuote(key);
-                const history = historyBySymbol.get(key);
-                history.push(record);
-                if (history.length > 200) 
-                    history.shift();
+                pushToHistory(key, record);
             } catch (err) {
-                // don't crash the server; just log errors
+                // avoid crashing the server if Finnhub fails temporarily
                 console.error(`Monitoring error for ${key}:`, err.message);
             }
         }, intervalMs);
 
         jobBySymbol.set(key, job);
 
-        return res.json({
+        res.json({
             message: `Started monitoring ${key}`,
             intervalMs,
             firstRecord
         });
     } catch (err) {
-        return res.status(500).json({ error: err.message });
-    }
-});
-
-app.post("/refresh", async (req, res) => {
-    const { symbol } = req.body;
-
-    if (!symbol || typeof symbol !== "string" || symbol.trim().length === 0) {
-        return res.status(400).json({ error: "symbol must be a non-empty string" });
-    }
-
-    const key = symbol.trim().toUpperCase();
-
-    try {
-        const record = await fetchStockQuote(key);
-
-        if (!historyBySymbol.has(key)) {
-            historyBySymbol.set(key, []);
-        }
-        const history = historyBySymbol.get(key);
-        history.push(record);
-        if (history.length > 200)
-            history.shift();
-
-        res.json(record);
-    } catch (err) {
         res.status(500).json({ error: err.message });
     }
 });
 
+/**
+ * stop monitoring a symbol
+ * POST /stop-monitoring { "symbol": "AAPL" }
+ */
 app.post("/stop-monitoring", (req, res) => {
-    const { symbol } = req.body;
-
-    if (!symbol || typeof symbol !== "string" || symbol.trim().length === 0) {
+    const key = normalizeSymbol(req.body.symbol);
+    if (!key) {
         return res.status(400).json({ error: "symbol must be a non-empty string" });
     }
-
-    const key = symbol.trim().toUpperCase();
 
     const job = jobBySymbol.get(key);
     if (!job) {
@@ -197,6 +251,9 @@ app.post("/stop-monitoring", (req, res) => {
     res.json({ message: `Stopped monitoring ${key}` });
 });
 
+// ----------------------
+// start the server
+// ----------------------
 app.listen(PORT, () => {
     console.log(`Server is running on http://localhost:${PORT}`);
 });
