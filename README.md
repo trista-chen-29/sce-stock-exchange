@@ -1,31 +1,128 @@
-# SCE Stock Exchange API (Backend)
+# Stock Exchange - SCE Financial Advising App (Full Stack)
 
-Backend service that monitors stock quotes using Finnhub and stores an in-memory history per symbol.
+A simple full-stack stock monitoring app.
+
+- **Frontend (React)**: lets users enter a stock symbol + refresh interval and displays results in a table.
+- **Backend (Node/Express)**: calls Finnhub Quote API, stores an **in-memory** history per symbol, and provides REST endpoints consumed by the frontend.
+
+> **Security note:** The Finnhub API key is stored only on the backend in `.env` (not exposed to the browser).
+
+---
+
+## Tech Stack
+
+**Frontend**
+- React (Vite)
+- Fetch API (calls backend endpoints)
+
+**Backend**
+- Node.js + Express
+- Finnhub Stock API
+- `dotenv` for API key config
+
+---
+
+## Project Structure
+
+```bash
+sce-stock-exchange/
+├── README.md                # Single full-stack README
+├── .gitignore
+├── server/                  # Backend (Express)
+│   ├── server.js
+│   ├── package.json
+│   ├── package-lock.json
+│   └── .env                 # (not committed)
+└── client/                  # Frontend (React - Vite)
+    ├── package.json
+    ├── package-lock.json
+    ├── vite.config.js
+    ├── index.html
+    └── src/
+        ├── main.jsx
+        ├── App.jsx
+        ├── App.css
+        ├── index.css
+        ├── api/
+        │   └── stockApi.js
+        └── components/
+            ├── StatusBar.jsx
+            ├── StockForm.jsx
+            └── StockTable.jsx
+```
+
+---
+
+## Prerequisites
+
+- Node.js (recommended: Node 18+)
+- A Finnhub API key (free tier is fine): https://finnhub.io
 
 ---
 
 ## Setup
 
-1. Install dependencies:
+### Backend setup (Express)
+
+1. From the `server/` folder (or repo root if backend is in root):
+
 ```bash
 npm install
 ```
 
-2. Create a `.env` file in the project root:
+2. Create a `.env` file:
+
 ```bash
 FINNHUB_API_KEY=YOUR_FINNHUB_API_KEY
 ```
 
-3. Start the server:
+3. Start the backend server:
+
 ```bash
 npm start
 ```
 
-Server runs on `http://localhost:3000`.
+Backend runs on:
+- `http://localhost:3000`
+
+### Frontend setup (React)
+
+1. From the `client/` folder:
+
+```bash
+npm install
+npm run dev
+```
+
+Frontend runs on:
+- `http://localhost:5173`
 
 ---
 
-## API Endpoints
+## Local Development Notes (important)
+
+### Vite Proxy (Frontend → Backend)
+
+The frontend uses relative API paths like `/history` and `/start-monitoring`.
+
+To avoid CORS issues in development, configure a Vite proxy in `client/vite.config.js`:
+
+```js
+export default {
+  server: {
+    proxy: {
+      "/start-monitoring": "http://localhost:3000",
+      "/history": "http://localhost:3000",
+      "/refresh": "http://localhost:3000",
+      "/stop-monitoring": "http://localhost:3000",
+    },
+  },
+};
+```
+
+---
+
+## Backend API Endpoints
 
 ### POST /start-monitoring
 
@@ -80,8 +177,23 @@ curl -X POST http://localhost:3000/stop-monitoring \
 
 ---
 
-## Notes
+## Frontend Features
+
+- Input fields: minutes, seconds, symbol
+- Submit starts monitoring (backend scheduled job)
+- Table displays rows of:
+  - Open, High, Low, Current, Previous Close, Timestamp
+- Automatic UI updates while monitoring (polls `/history`)
+- Refresh (calls `/refresh`)
+- Stop (calls `/stop-monitoring`)
+
+---
+
+## Notes / Behavior
 
 - History is stored in-memory using a `Map` keyed by stock symbol.
 - History is capped at 200 records per symbol.
-- Calling `POST /start-monitoring` again for the same symbol will restart the monitoring interval (previous job is cleared), but it will **continue appending to the existing history** for that symbol. To reset history, restart the server (in-memory storage) or modify the code to clear `historyBySymbol` for that symbol when restarting.
+- Calling `POST /start-monitoring` again for the same symbol:
+  - clears the previous monitoring interval job,
+  - continues appending to the existing history for that symbol.
+  - To reset history: restart the backend server (in-memory storage) or clear the symbol’s history in code.

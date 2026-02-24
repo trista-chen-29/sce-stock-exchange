@@ -1,0 +1,160 @@
+/* center the card on the screen */
+.appShell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 36px 18px;
+}
+
+/* main card: width limit + padding + subtle depth */
+.page {
+  width: min(1050px, 100%);
+  padding: 26px 26px 22px;
+  border-radius: 14px;
+
+  /* subtle depth + border for contrast on dark background */
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  background: rgba(255, 255, 255, 0.03);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+}
+
+/* title */
+.title {
+  margin: 0 0 18px 0;
+  font-size: 44px;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+}
+
+/* form layout: responsive and wraps on small screens */
+.form {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+/* inputs: consistent sizing and focus styles for accessibility */
+.input {
+  padding: 10px 12px;
+  width: 90px;
+
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(0, 0, 0, 0.20);
+  color: inherit;
+
+  outline: none; /* focus ring handled below for accessibility */
+}
+
+/* wider symbol input */
+.input.symbol {
+  width: 170px;
+}
+
+/* visible focus state for keyboard users */
+.input:focus {
+  border-color: rgba(255, 255, 255, 0.28);
+}
+
+/* buttons: style variants for clear affordance */
+.btn {
+  padding: 10px 16px;
+  border-radius: 8px;
+
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.06);
+  color: inherit;
+
+  cursor: pointer;
+  font-weight: 650;
+}
+
+.btn:hover {
+  border-color: rgba(255, 255, 255, 0.24);
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+/* variant: submit */
+.btn.primary {
+  background: #35b24a;
+  border-color: #35b24a;
+  color: #0b0b0b;
+}
+
+.btn.primary:hover {
+  background: #43c25a;
+  border-color: #43c25a;
+}
+
+/* secondary and danger styles for clarity */
+.btn.secondary {
+  background: rgba(255, 255, 255, 0.06);
+}
+.btn.danger {
+  background: rgba(255, 99, 71, 0.14);
+  border-color: rgba(255, 99, 71, 0.26);
+}
+
+.btn.danger:hover {
+  background: rgba(255, 99, 71, 0.20);
+  border-color: rgba(255, 99, 71, 0.35);
+}
+
+/* status line styling */
+.status {
+  margin: 10px 0 0 0;
+  opacity: 0.92;
+}
+.status b {
+  margin-right: 6px;
+}
+
+/* table wrapper allows horizontal scrolling for small screens */
+.tableWrap {
+  margin-top: 16px;
+  overflow-x: auto;
+}
+
+/* table visual styling, readable on dark background */
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 860px; /* slightly smaller than 900 for nicer fit */
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+/* header styling */
+.table th {
+  text-align: center;
+  font-weight: 750;
+  padding: 12px 10px;
+  background: rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.10);
+}
+
+/* cells */
+.table td {
+  padding: 11px 10px;
+  text-align: center;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* zebra rows to improve row scanning */
+.table tbody tr:nth-child(even) td {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+/* empty placeholder cell */
+.empty {
+  text-align: center;
+  padding: 18px;
+  opacity: 0.8;
+}

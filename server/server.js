@@ -107,28 +107,11 @@ function normalizeSymbol(symbol) {
 // ----------------------
 
 /**
- * Health check / sanity endpoint
+ * health check endpoint
+ * GET /
  */
 app.get("/", (req, res) => {
-    res.json({ message: "Stock API is running" });
-});
-
-/**
- * quick one-off test fetch:
- * GET /test-fetch?symbol=AAPL
- */
-app.get("/test-fetch", async (req, res) => {
-    const key = normalizeSymbol(req.query.symbol);
-    if (!key) {
-        return res.status(400).json({ error: "Invalid symbol" });
-    }
-
-    try {
-        const result = await fetchStockQuote(key);
-        res.json(result);
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
+    res.json({ status: "ok", service: "SCE Stock Exchange API" });
 });
 
 /**
@@ -143,7 +126,6 @@ app.get("/history", (req, res) => {
 
     res.json(historyBySymbol.get(key) || []);
 });
-
 
 /**
  * manually refresh (fetch once and append to history)
